@@ -5,7 +5,7 @@ mod queue;
 use cli::{get_cli_params, Parameters};
 use error::Error;
 use futures::future::TryFutureExt;
-use queue::{delete_messages_from_queue, pull_all_messages, push_messages};
+use queue::{delete_messages_from_queue, pull_messages, push_messages};
 use rusoto_core::{credential::ProfileProvider, HttpClient};
 use rusoto_sqs::{Message, SqsClient};
 
@@ -58,10 +58,17 @@ async fn move_messages(params: Parameters) -> Result<(), Error> {
         params.region,
     );
 
-    let mut messages = pull_all_messages(&sqs, &params.source).await?;
-    messages = maybe_filter_messages(&params.filter, messages)?;
-    messages = push_messages(&sqs, &params.destination, messages).await?;
-    delete_messages_from_queue(&sqs, &params.source, messages).await
+    loop {
+        let mut messages = pull_messages(&sqs, &params.source).await?;
+
+        // If we didn't get any messages then stop
+        if messages.is_empty() {
+            return Ok(());
+        }
+        messages = maybe_filter_messages(&params.filter, messages)?;
+        messages = push_messages(&sqs, &params.destination, messages).await?;
+        delete_messages_from_queue(&sqs, &params.source, messages).await?;
+    }
 }
 
 #[tokio::main]

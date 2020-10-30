@@ -5,41 +5,22 @@ use rusoto_sqs::{
 
 use crate::error::Error;
 
-pub async fn pull_all_messages<T: Sqs>(sqs: &T, queue_url: &str) -> Result<Vec<Message>, Error> {
-    let mut messages = vec![];
-    loop {
-        let response = sqs
-            .receive_message(ReceiveMessageRequest {
-                attribute_names: Some(vec!["All".to_owned()]),
-                max_number_of_messages: Some(10),
-                message_attribute_names: Some(vec!["All".to_owned()]),
-                queue_url: queue_url.to_owned(),
-                receive_request_attempt_id: None,
-                visibility_timeout: Some(2),
-                wait_time_seconds: Some(1),
-            })
-            .await;
+pub async fn pull_messages<T: Sqs>(sqs: &T, queue_url: &str) -> Result<Vec<Message>, Error> {
+    let response = sqs
+        .receive_message(ReceiveMessageRequest {
+            attribute_names: Some(vec!["All".to_owned()]),
+            max_number_of_messages: Some(10),
+            message_attribute_names: Some(vec!["All".to_owned()]),
+            queue_url: queue_url.to_owned(),
+            receive_request_attempt_id: None,
+            visibility_timeout: Some(2),
+            wait_time_seconds: Some(1),
+        })
+        .await;
 
-        let maybe_messages = response
-            .ok()
-            .and_then(|val| val.messages)
-            .filter(|messages| !messages.is_empty());
+    let maybe_messages = response.map(|val| val.messages.unwrap_or(vec![]));
 
-        match maybe_messages {
-            Some(mut new_messages) => {
-                messages.append(&mut new_messages);
-            }
-            None => {
-                break;
-            }
-        }
-    }
-
-    if messages.is_empty() {
-        Err(Error::MessagePullFailed)
-    } else {
-        Ok(messages)
-    }
+    maybe_messages.map_err(|_| Error::MessagePullFailed)
 }
 
 pub async fn push_messages<T: Sqs>(
