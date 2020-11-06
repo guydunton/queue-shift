@@ -6,4 +6,5 @@ pub enum Error {
     NothingAfterFilter,
     FailedToPushMessages,
     FailedToDeleteMessages(Vec<Message>),
+    FailedToChangeMessageVisibility,
 }

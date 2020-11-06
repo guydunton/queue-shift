@@ -1,4 +1,5 @@
 use rusoto_sqs::{
+    ChangeMessageVisibilityBatchRequest, ChangeMessageVisibilityBatchRequestEntry,
     DeleteMessageBatchRequest, DeleteMessageBatchRequestEntry, Message, ReceiveMessageRequest,
     SendMessageBatchRequest, SendMessageBatchRequestEntry, Sqs,
 };
@@ -13,7 +14,7 @@ pub async fn pull_messages<T: Sqs>(sqs: &T, queue_url: &str) -> Result<Vec<Messa
             message_attribute_names: Some(vec!["All".to_owned()]),
             queue_url: queue_url.to_owned(),
             receive_request_attempt_id: None,
-            visibility_timeout: Some(2),
+            visibility_timeout: Some(60 * 10),
             wait_time_seconds: Some(1),
         })
         .await;
@@ -81,4 +82,31 @@ pub async fn delete_messages_from_queue<T: Sqs>(
         Ok(_) => Ok(()),
         Err(_) => Err(Error::FailedToDeleteMessages(messages)),
     }
+}
+
+pub async fn reset_timeout<T: Sqs>(
+    sqs: &T,
+    queue_url: &str,
+    messages: Vec<Message>,
+) -> Result<(), Error> {
+    // Split into batches and reset the timeout
+    let chunks = messages.chunks(10);
+
+    for chunk in chunks {
+        sqs.change_message_visibility_batch(ChangeMessageVisibilityBatchRequest {
+            entries: chunk
+                .iter()
+                .map(|msg| ChangeMessageVisibilityBatchRequestEntry {
+                    id: msg.message_id.clone().unwrap(),
+                    receipt_handle: msg.receipt_handle.clone().unwrap(),
+                    visibility_timeout: Some(1),
+                })
+                .collect(),
+            queue_url: queue_url.to_owned(),
+        })
+        .await
+        .map_err(|_| Error::FailedToChangeMessageVisibility)?;
+    }
+
+    Ok(())
 }
